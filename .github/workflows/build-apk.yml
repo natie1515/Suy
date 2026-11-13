@@ -1,5 +1,5 @@
 # Guardar como: .github/workflows/build-apk.yml (en tu fork de flutter_client)
-# Compila el APK completo (split por ABI + universal), sin secretos ni firma propia:
+# Compila el APK arm64 (el de casi todos los móviles), sin secretos ni firma propia:
 # al no existir android/key.properties, Gradle firma con android/app/debug.keystore
 # (ya incluido en el repo). Sirve para instalar, no para publicar en Play Store.
 name: Build APK (Veylo)
@@ -90,27 +90,23 @@ jobs:
       - name: build_runner
         run: dart run build_runner build
 
-      - name: APK por arquitectura
-        run: >
-          flutter build apk --release --split-per-abi
-          --flavor stableUnifiedpush
-          --build-number ${{ github.run_number }}
-          -P force-version-code-ignoring-abi=true
-          --dart-define-from-file=tool/dart_defines/stable.json
-          --dart-define=PUSH_PROVIDER=unifiedpush
-          --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      - name: Liberar disco y ajustar memoria
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile
+          sudo mkswap /swapfile && sudo swapon /swapfile
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
+          free -h; df -h /
 
-      - name: APK universal
+      - name: APK arm64
         run: >
           flutter build apk --release
+          --target-platform android-arm64
           --flavor stableUnifiedpush
           --build-number ${{ github.run_number }}
           --dart-define-from-file=tool/dart_defines/stable.json
           --dart-define=PUSH_PROVIDER=unifiedpush
           --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-      - name: Renombrar APK
-        run: bash .github/scripts/rename_oss_apk_artifacts.sh stableunifiedpush
 
       - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
