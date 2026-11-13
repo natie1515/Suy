@@ -1,7 +1,3 @@
-# Guardar como: .github/workflows/build-apk.yml (en tu fork de flutter_client)
-# Compila el APK arm64 (el de casi todos los móviles), sin secretos ni firma propia:
-# al no existir android/key.properties, Gradle firma con android/app/debug.keystore
-# (ya incluido en el repo). Sirve para instalar, no para publicar en Play Store.
 name: Build APK (Veylo)
 
 on:
@@ -20,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Checkout (con submódulos)
+      - name: Checkout con submódulos
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -40,7 +36,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      # Misma acción y versión que usan los workflows oficiales del proyecto.
       - name: Flutter
         uses: axi92/flutter-action@72633a794ba0b23276fa4fc465a6cacb758a90c5
         with:
@@ -54,28 +49,50 @@ jobs:
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: ${{ runner.os }}-pub-
 
-      # ---- Apuntar la app a tu dominio y quitar enlaces de Play Store ----
-      - name: Cambiar dominio y enlaces
+      - name: Configurar instancia y nombre
         env:
           DOMAIN: ${{ inputs.domain }}
         run: |
-          set -euo pipefail
-          F=lib/core/instance/instance_constants.dart
-          sed -i "s#https://fluxer.com/api/v1#https://${DOMAIN}/api/v1#g" "$F"
-          sed -i "s#wss://gateway.fluxer.com#wss://${DOMAIN}/gateway#g" "$F"
-          sed -i "s#defaultInstanceInputUrl = 'fluxer.com'#defaultInstanceInputUrl = '${DOMAIN}'#" "$F"
-          sed -i "s#https://fluxer.com/#https://${DOMAIN}/#g" "$F"
-          sed -i "s#https://play.google.com/store/account/subscriptions#https://${DOMAIN}#" \
-            lib/features/settings/presentation/sheets/account_delete_sheet.dart
-          echo "--- resultado ---"
-          sed -n 1,12p "$F"
-          grep -rn "play.google" lib || echo "sin enlaces a Play Store en lib/"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
 
-      # ---- Build (perfil OSS: UnifiedPush, sin Firebase) ----
+          domain = os.environ["DOMAIN"].strip().lower()
+          if len(domain) > 253 or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", domain):
+              raise SystemExit("Escribe solo el dominio, sin https:// ni rutas.")
+
+          constants = Path("lib/core/instance/instance_constants.dart")
+          source = constants.read_text(encoding="utf-8")
+          for key, value in {
+              "defaultApiBaseUrl": f"https://{domain}/api/v1",
+              "defaultGatewayUrl": f"wss://{domain}/gateway",
+              "defaultInstanceInputUrl": domain,
+              "defaultTermsUrl": f"https://{domain}/terms",
+              "defaultPrivacyUrl": f"https://{domain}/privacy",
+              "helpCenterUrl": f"https://{domain}/help",
+              "defaultProductName": "Veylo",
+          }.items():
+              source, count = re.subn(rf"({key}\s*=\s*)'[^']*'", lambda match: f"{match[1]}'{value}'", source)
+              if count != 1:
+                  raise SystemExit(f"No se encontró un ajuste único: {key}")
+          constants.write_text(source, encoding="utf-8")
+
+          gradle = Path("android/app/build.gradle.kts")
+          source = gradle.read_text(encoding="utf-8")
+          source, count = re.subn(r'(manifestPlaceholders\["appLabel"\]\s*=\s*)"Fluxer"', r'\1"Veylo"', source)
+          if count < 1:
+              raise SystemExit("No se encontró la etiqueta appLabel de Android.")
+          gradle.write_text(source, encoding="utf-8")
+
+          sheet = Path("lib/features/settings/presentation/sheets/account_delete_sheet.dart")
+          source = sheet.read_text(encoding="utf-8")
+          sheet.write_text(source.replace("https://play.google.com/store/account/subscriptions", f"https://{domain}"), encoding="utf-8")
+          PY
+
       - name: Configurar perfil OSS
         run: dart tool/configure_build.dart --profile=oss
 
-      - name: Rust (parser markdown nativo)
+      - name: Rust para Android
         run: |
           rustup show active-toolchain || rustup toolchain install stable
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
@@ -87,39 +104,41 @@ jobs:
       - name: Dependencias
         run: flutter pub get
 
-      - name: build_runner
+      - name: Generar código
         run: dart run build_runner build
 
       - name: Liberar disco y ajustar memoria
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
-          sudo fallocate -l 8G /swapfile && sudo chmod 600 /swapfile
-          sudo mkswap /swapfile && sudo swapon /swapfile
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
           sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
-          free -h; df -h /
 
-      - name: APK arm64
-        run: >
-          flutter build apk --release
-          --target-platform android-arm64
-          --flavor stableUnifiedpush
-          --build-number ${{ github.run_number }}
-          --dart-define-from-file=tool/dart_defines/stable.json
-          --dart-define=PUSH_PROVIDER=unifiedpush
-          --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      - name: Compilar APK arm64
+        run: |
+          flutter build apk --release \
+            --target-platform android-arm64 \
+            --flavor stableUnifiedpush \
+            --build-number "$GITHUB_RUN_NUMBER" \
+            --dart-define-from-file=tool/dart_defines/stable.json \
+            --dart-define=PUSH_PROVIDER=unifiedpush \
+            --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cp build/app/outputs/flutter-apk/app-stable-unifiedpush-release.apk Veylo-arm64.apk
 
       - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: veylo-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          name: Veylo-Android-arm64
+          path: Veylo-arm64.apk
           if-no-files-found: error
 
       - name: Publicar en Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          DOMAIN: ${{ inputs.domain }}
         run: |
-          gh release create "veylo-apk-${{ github.run_number }}" \
-            build/app/outputs/flutter-apk/*.apk \
-            --title "Veylo APK #${{ github.run_number }}" \
-            --notes "APK sin firma propia (firmado con la clave debug). Dominio: ${{ inputs.domain }}"
+          gh release create "veylo-apk-$GITHUB_RUN_NUMBER" Veylo-arm64.apk \
+            --title "Veylo APK #$GITHUB_RUN_NUMBER" \
+            --notes "APK firmado con la clave debug. Dominio: $DOMAIN"
