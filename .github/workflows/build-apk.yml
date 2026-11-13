@@ -228,6 +228,40 @@ jobs:
           output.parent.mkdir(parents=True, exist_ok=True)
           output.write_text(json.dumps(config), encoding="utf-8")
 
+          client = next(entry for entry in config["client"]
+                        if entry.get("client_info", {}).get("android_client_info", {})
+                        .get("package_name") == "com.fluxer")
+          project = config["project_info"]
+          fields = {
+              "apiKey": next((item.get("current_key") for item in client.get("api_key", [])
+                              if item.get("current_key")), None),
+              "appId": client["client_info"].get("mobilesdk_app_id"),
+              "messagingSenderId": project.get("project_number"),
+              "projectId": project.get("project_id"),
+          }
+          if any(not isinstance(value, str) or not value for value in fields.values()):
+              raise SystemExit("Faltan campos Android en google-services.json.")
+          if project.get("storage_bucket"):
+              fields["storageBucket"] = project["storage_bucket"]
+
+          arguments = "".join(
+              "    " + key + ": " + json.dumps(value).replace("$", r"\$") + ",\n"
+              for key, value in fields.items()
+          )
+          dart_options = Path("packages/fluxer_fcm/lib/firebase_options.dart")
+          if not dart_options.parent.is_dir():
+              raise SystemExit("No se encontró el paquete fluxer_fcm.")
+          dart_options.write_text(
+              "// Generated from the Android Firebase configuration.\n"
+              "import 'package:firebase_core/firebase_core.dart';\n\n"
+              "class DefaultFirebaseOptions {\n"
+              "  static const FirebaseOptions currentPlatform = FirebaseOptions(\n"
+              + arguments +
+              "  );\n"
+              "}\n",
+              encoding="utf-8",
+          )
+
           relay = Path("lib/core/push/web_push/web_push_relay.dart")
           text = relay.read_text(encoding="utf-8")
           old = "const String kPushRelayOrigin = 'https://push.fluxer.com';"
