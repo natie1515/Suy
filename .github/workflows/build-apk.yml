@@ -224,7 +224,7 @@ jobs:
                       if "android_client_info" in client.get("client_info", {})]
           if "com.fluxer" not in packages:
               raise SystemExit("El JSON de Firebase debe incluir com.fluxer.")
-          output = Path("android/app/src/fcm/google-services.json")
+          output = Path("android/app/src/stableFcm/google-services.json")
           output.parent.mkdir(parents=True, exist_ok=True)
           output.write_text(json.dumps(config), encoding="utf-8")
 
@@ -304,6 +304,7 @@ jobs:
 
       - name: Compilar APK arm64
         run: |
+          test -s android/app/src/stableFcm/google-services.json || { echo "Falta google-services.json para stableFcm" >&2; exit 1; }
           flutter build apk --release \
             --target-platform android-arm64 \
             --flavor stableFcm \
