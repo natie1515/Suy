@@ -110,10 +110,16 @@ jobs:
       - name: Liberar disco y ajustar memoria
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          active_swap="$(swapon --noheadings --show=NAME)"
+          if [[ -n "$active_swap" ]]; then
+            echo "Se usará el swap activo del runner."
+          else
+            swap_path="$(mktemp /var/tmp/veylo-swap.XXXXXX)"
+            sudo fallocate -l 8G "$swap_path"
+            sudo mkswap "$swap_path"
+            sudo swapon "$swap_path"
+          fi
+          free -h
           sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
 
       - name: Compilar APK arm64
@@ -125,7 +131,13 @@ jobs:
             --dart-define-from-file=tool/dart_defines/stable.json \
             --dart-define=PUSH_PROVIDER=unifiedpush \
             --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          cp build/app/outputs/flutter-apk/app-stable-unifiedpush-release.apk Veylo-arm64.apk
+          shopt -s nullglob
+          apks=(build/app/outputs/flutter-apk/*-release.apk)
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo "Se esperaba un APK release, se encontraron ${#apks[@]}." >&2
+            exit 1
+          fi
+          cp "${apks[0]}" Veylo-arm64.apk
 
       - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
