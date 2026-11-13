@@ -1,0 +1,129 @@
+# Guardar como: .github/workflows/build-apk.yml (en tu fork de flutter_client)
+# Compila el APK completo (split por ABI + universal), sin secretos ni firma propia:
+# al no existir android/key.properties, Gradle firma con android/app/debug.keystore
+# (ya incluido en el repo). Sirve para instalar, no para publicar en Play Store.
+name: Build APK (Veylo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: Dominio de tu instancia (sin https://)
+        required: true
+        default: bot1.hidenplay.net
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout (con submódulos)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # Misma acción y versión que usan los workflows oficiales del proyecto.
+      - name: Flutter
+        uses: axi92/flutter-action@72633a794ba0b23276fa4fc465a6cacb758a90c5
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+
+      - name: Cache de pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      # ---- Apuntar la app a tu dominio y quitar enlaces de Play Store ----
+      - name: Cambiar dominio y enlaces
+        env:
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          F=lib/core/instance/instance_constants.dart
+          sed -i "s#https://fluxer.com/api/v1#https://${DOMAIN}/api/v1#g" "$F"
+          sed -i "s#wss://gateway.fluxer.com#wss://${DOMAIN}/gateway#g" "$F"
+          sed -i "s#defaultInstanceInputUrl = 'fluxer.com'#defaultInstanceInputUrl = '${DOMAIN}'#" "$F"
+          sed -i "s#https://fluxer.com/#https://${DOMAIN}/#g" "$F"
+          sed -i "s#https://play.google.com/store/account/subscriptions#https://${DOMAIN}#" \
+            lib/features/settings/presentation/sheets/account_delete_sheet.dart
+          echo "--- resultado ---"
+          sed -n 1,12p "$F"
+          grep -rn "play.google" lib || echo "sin enlaces a Play Store en lib/"
+
+      # ---- Build (perfil OSS: UnifiedPush, sin Firebase) ----
+      - name: Configurar perfil OSS
+        run: dart tool/configure_build.dart --profile=oss
+
+      - name: Rust (parser markdown nativo)
+        run: |
+          rustup show active-toolchain || rustup toolchain install stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          flutter config --enable-native-assets
+
+      - name: Stub de unifiedpush_linux
+        run: bash tool/apply_macos_pub_overrides.sh
+
+      - name: Dependencias
+        run: flutter pub get
+
+      - name: build_runner
+        run: dart run build_runner build
+
+      - name: APK por arquitectura
+        run: >
+          flutter build apk --release --split-per-abi
+          --flavor stableUnifiedpush
+          --build-number ${{ github.run_number }}
+          -P force-version-code-ignoring-abi=true
+          --dart-define-from-file=tool/dart_defines/stable.json
+          --dart-define=PUSH_PROVIDER=unifiedpush
+          --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: APK universal
+        run: >
+          flutter build apk --release
+          --flavor stableUnifiedpush
+          --build-number ${{ github.run_number }}
+          --dart-define-from-file=tool/dart_defines/stable.json
+          --dart-define=PUSH_PROVIDER=unifiedpush
+          --dart-define=BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Renombrar APK
+        run: bash .github/scripts/rename_oss_apk_artifacts.sh stableunifiedpush
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: veylo-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "veylo-apk-${{ github.run_number }}" \
+            build/app/outputs/flutter-apk/*.apk \
+            --title "Veylo APK #${{ github.run_number }}" \
+            --notes "APK sin firma propia (firmado con la clave debug). Dominio: ${{ inputs.domain }}"
