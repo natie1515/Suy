@@ -1,5 +1,5 @@
 diff --git a/lib/features/profile/presentation/sheets/current_user_profile_sheet.dart b/lib/features/profile/presentation/sheets/current_user_profile_sheet.dart
-index 83c75c8..6be77eb 100644
+index 83c75c8..321460f 100644
 --- a/lib/features/profile/presentation/sheets/current_user_profile_sheet.dart
 +++ b/lib/features/profile/presentation/sheets/current_user_profile_sheet.dart
 @@ -1,5 +1,7 @@
@@ -10,7 +10,7 @@ index 83c75c8..6be77eb 100644
  import 'package:fluxer_app/features/settings/providers/view_models/user_settings_view_model.dart';
  import 'package:fluxer_app/features/ui/bottom_sheet/fluxer_bottom_sheet.dart';
  import 'package:fluxer_app/material_ui.dart';
-@@ -19,12 +21,29 @@ class CurrentUserProfileSheet {
+@@ -19,11 +21,29 @@ class CurrentUserProfileSheet {
              ScrollController scrollController,
              VoidCallback close,
            ) {
@@ -20,7 +20,8 @@ index 83c75c8..6be77eb 100644
                autoFocusNote: false,
                scrollController: scrollController,
                useCurrentUserCache: true,
-             );
++              showSettingsButton: !isFluxerNativeAndroid,
++            );
 +            if (!isFluxerNativeAndroid) {
 +              return profile;
 +            }
@@ -37,10 +38,9 @@ index 83c75c8..6be77eb 100644
 +                  ),
 +                ),
 +              ],
-+            );
+             );
            },
      );
-   }
 diff --git a/lib/features/profile/presentation/widgets/veylo_profile_actions.dart b/lib/features/profile/presentation/widgets/veylo_profile_actions.dart
 new file mode 100644
 index 0000000..9a39e1a
@@ -512,3 +512,62 @@ index 0000000..fb178c3
 +    );
 +  }
 +}
+diff --git a/lib/features/profile/presentation/profile_page.dart b/lib/features/profile/presentation/profile_page.dart
+index eeb3714..e28fa37 100644
+--- a/lib/features/profile/presentation/profile_page.dart
++++ b/lib/features/profile/presentation/profile_page.dart
+@@ -1,4 +1,5 @@
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:fluxer_app/core/platform/fluxer_platform.dart';
+ import 'package:fluxer_app/core/theme/fluxer_theme_extension.dart';
+ import 'package:fluxer_app/features/profile/presentation/widgets/user_profile_view.dart';
+ import 'package:fluxer_app/features/settings/providers/view_models/user_settings_view_model.dart';
+@@ -42,6 +43,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
+           autoFocusNote: false,
+           scrollController: _scrollController,
+           useCurrentUserCache: true,
++          showSettingsButton: !isFluxerNativeAndroid,
+         ),
+       ),
+     );
+diff --git a/lib/features/profile/presentation/widgets/user_profile_view.dart b/lib/features/profile/presentation/widgets/user_profile_view.dart
+index 55274c2..0634920 100644
+--- a/lib/features/profile/presentation/widgets/user_profile_view.dart
++++ b/lib/features/profile/presentation/widgets/user_profile_view.dart
+@@ -79,6 +79,7 @@ class UserProfileView extends ConsumerStatefulWidget {
+     this.guildId,
+     this.onCloseRequested,
+     this.useCurrentUserCache = false,
++    this.showSettingsButton = true,
+     this.showTopHandle = false,
+     this.isWebhook = false,
+     this.message,
+@@ -93,6 +94,7 @@ class UserProfileView extends ConsumerStatefulWidget {
+   final ScrollController scrollController;
+   final VoidCallback? onCloseRequested;
+   final bool useCurrentUserCache;
++  final bool showSettingsButton;
+   final bool showTopHandle;
+   final bool isWebhook;
+   final Message? message;
+@@ -550,8 +552,9 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+                             errorAction: ApiErrorAction.sendFriendRequest,
+                           ),
+                         ),
+-                        SizedBox(width: layout.s2),
+-                        if (actionUser == null)
++                        if (actionUser != null || widget.showSettingsButton)
++                          SizedBox(width: layout.s2),
++                        if (actionUser == null && widget.showSettingsButton)
+                           FluxerButton.circleAlt(
+                             icon: PhosphorIconsFill.gear,
+                             semanticLabel: FluxerLocalizations.of(
+@@ -559,7 +562,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+                             ).nagbarOpenSettings,
+                             onPressed: () => UserSettingsModal.show(context),
+                           )
+-                        else
++                        else if (actionUser != null)
+                           _MoreButton(onTap: openActions),
+                       ],
+                     ),
