@@ -1,0 +1,477 @@
+diff --git a/lib/features/profile/presentation/widgets/user_profile_header.dart b/lib/features/profile/presentation/widgets/user_profile_header.dart
+index f6cdc68..60143fb 100644
+--- a/lib/features/profile/presentation/widgets/user_profile_header.dart
++++ b/lib/features/profile/presentation/widgets/user_profile_header.dart
+@@ -1,3 +1,4 @@
++import 'package:fluxer_app/features/profile/presentation/widgets/profile_appearance.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:fluxer_app/core/providers/instance/instance_runtime_config_provider.dart';
+ import 'package:fluxer_app/core/theme/fluxer_theme_extension.dart';
+@@ -20,6 +21,7 @@ class UserProfileHeader extends ConsumerWidget {
+     required this.badges,
+     required this.customStatus,
+     this.pronouns,
++    this.appearance,
+     this.showUsername = true,
+     this.isBot = false,
+     this.isSystem = false,
+@@ -32,6 +34,7 @@ class UserProfileHeader extends ConsumerWidget {
+   final String username;
+   final String discriminator;
+   final String displayName;
++  final Map<String, Object?>? appearance;
+   final List<ProfileBadgeResponse> badges;
+   final String? customStatus;
+   final String? pronouns;
+@@ -75,7 +78,7 @@ class UserProfileHeader extends ConsumerWidget {
+                   return Row(
+                     mainAxisSize: MainAxisSize.min,
+                     children: [
+-                      Text(displayName, style: displayNameStyle),
++                      profileName(displayName, displayNameStyle, appearance),
+                       SizedBox(width: layout.s1),
+                       PhosphorIcon(
+                         PhosphorIconsBold.caretDown,
+@@ -87,7 +90,7 @@ class UserProfileHeader extends ConsumerWidget {
+                 },
+               )
+             else
+-              Text(displayName, style: displayNameStyle),
++              profileName(displayName, displayNameStyle, appearance),
+             if (showUserTag) FluxerUserTag(isSystem: isSystem),
+           ],
+         ),
+diff --git a/lib/features/profile/presentation/widgets/user_profile_popout_frame.dart b/lib/features/profile/presentation/widgets/user_profile_popout_frame.dart
+index 0ccea9d..dc1991a 100644
+--- a/lib/features/profile/presentation/widgets/user_profile_popout_frame.dart
++++ b/lib/features/profile/presentation/widgets/user_profile_popout_frame.dart
+@@ -20,6 +20,7 @@ class UserProfilePopoutFrame extends StatelessWidget {
+   const UserProfilePopoutFrame({
+     required this.scrollController,
+     required this.accentColor,
++    this.gradient,
+     required this.bannerUrl,
+     required this.avatar,
+     required this.badges,
+@@ -31,6 +32,7 @@ class UserProfilePopoutFrame extends StatelessWidget {
+ 
+   final ScrollController scrollController;
+   final Color accentColor;
++  final Gradient? gradient;
+   final String? bannerUrl;
+   final Widget avatar;
+   final List<ProfileBadgeResponse> badges;
+@@ -46,6 +48,7 @@ class UserProfilePopoutFrame extends StatelessWidget {
+     return DecoratedBox(
+       decoration: BoxDecoration(
+         color: context.colors.backgroundPrimary,
++        gradient: gradient,
+         border: Border.all(color: accentColor, width: _kBorderWidth),
+         borderRadius: BorderRadius.circular(_kOuterRadius),
+       ),
+diff --git a/lib/features/profile/presentation/widgets/user_profile_view.dart b/lib/features/profile/presentation/widgets/user_profile_view.dart
+index 455998c..55274c2 100644
+--- a/lib/features/profile/presentation/widgets/user_profile_view.dart
++++ b/lib/features/profile/presentation/widgets/user_profile_view.dart
+@@ -1,3 +1,4 @@
++import 'package:fluxer_app/features/profile/presentation/widgets/profile_appearance.dart';
+ import 'dart:async';
+ import 'dart:convert';
+ import 'dart:math' as math;
+@@ -311,6 +312,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+     required String username,
+     required String discriminator,
+     required String displayName,
++    Map<String, Object?>? appearance,
+     required String? avatarUrl,
+     required int? avatarColor,
+     required Color bannerColor,
+@@ -396,6 +398,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+         username: username,
+         discriminator: discriminator,
+         displayName: displayName,
++        appearance: appearance,
+         avatarUrl: avatarUrl,
+         avatarColor: avatarColor,
+         bannerColor: bannerColor,
+@@ -579,6 +582,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+                 username: username,
+                 discriminator: discriminator,
+                 displayName: displayName,
++                appearance: appearance,
+                 badges: profileBadges,
+                 customStatus: customStatus,
+                 pronouns: pronouns,
+@@ -695,6 +699,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+     return DecoratedBox(
+       decoration: BoxDecoration(
+         color: colors.backgroundPrimary,
++        gradient: profileGradient(appearance),
+         borderRadius: BorderRadius.vertical(top: layout.radiusXxl.topLeft),
+       ),
+       child: scrollView,
+@@ -706,6 +711,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+     required String username,
+     required String discriminator,
+     required String displayName,
++    Map<String, Object?>? appearance,
+     required String? avatarUrl,
+     required int? avatarColor,
+     required Color bannerColor,
+@@ -746,14 +752,15 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+       ),
+     );
+     final int nameLength = math.max(displayName.characters.length, 1);
+-    final Widget name = Text(
++    final Widget name = profileName(
+       displayName,
+-      style: textStyles.heading.copyWith(
++      textStyles.heading.copyWith(
+         color: colors.textPrimary,
+         fontSize: (480 / nameLength).clamp(17.0, 20.0),
+         fontWeight: FontWeight.w500,
+         height: 24 / (480 / nameLength).clamp(17.0, 20.0),
+       ),
++      appearance,
+       maxLines: 1,
+       overflow: TextOverflow.ellipsis,
+     );
+@@ -783,6 +790,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+     return UserProfilePopoutFrame(
+       scrollController: widget.scrollController,
+       accentColor: bannerColor,
++      gradient: profileGradient(appearance),
+       bannerUrl: bannerUrl,
+       badges: profileBadges,
+       footer: footer,
+@@ -1172,6 +1180,9 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
+           username: response.user.username,
+           discriminator: response.user.discriminator,
+           displayName: profileDisplay.displayName,
++          appearance: _showGlobalProfile || response.guildMemberProfile == null
++              ? response.userProfile.profileAppearance
++              : null,
+           avatarUrl: profileDisplay.avatarUrl,
+           avatarColor: response.user.avatarColor,
+           bannerColor:
+diff --git a/lib/features/settings/presentation/widgets/user_profile.dart b/lib/features/settings/presentation/widgets/user_profile.dart
+index 8d0dacd..f4f0c34 100644
+--- a/lib/features/settings/presentation/widgets/user_profile.dart
++++ b/lib/features/settings/presentation/widgets/user_profile.dart
+@@ -1,5 +1,7 @@
+ import 'dart:async';
+ 
++import 'package:fluxer_app/features/profile/presentation/widgets/profile_appearance.dart';
++
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:fluxer_app/core/limits/instance_limit_provider.dart';
+ import 'package:fluxer_app/core/limits/limit_key.dart';
+@@ -504,6 +506,14 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+                             onTapOutside: (_) =>
+                                 FocusManager.instance.primaryFocus?.unfocus(),
+                           ),
++                          SizedBox(height: layout.s4),
++                          ProfileAppearanceEditor(
++                            appearance: state.editedProfileAppearance ?? state.profileAppearance,
++                            onChanged: vm.updateProfileAppearance,
++                            displayName: _displayNameController.text.isEmpty ? state.username : _displayNameController.text,
++                            premium: state.isPremium,
++                            themeSection: false,
++                          ),
+                         ],
+                         if (state.isPerGuildProfile &&
+                             !state.isLoadingGuildProfile) ...[
+@@ -615,6 +625,16 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+                             child: _buildBioSection(state, vm, layout, l10n),
+                           ),
+                         ),
++                        if (!state.isPerGuildProfile) ...[
++                          SizedBox(height: layout.s6),
++                          ProfileAppearanceEditor(
++                            appearance: state.editedProfileAppearance ?? state.profileAppearance,
++                            onChanged: vm.updateProfileAppearance,
++                            displayName: _displayNameController.text.isEmpty ? state.username : _displayNameController.text,
++                            premium: state.isPremium,
++                            themeSection: true,
++                          ),
++                        ],
+                         SizedBox(height: layout.s8),
+                         FluxerGestureDetector(
+                           onTap: () =>
+diff --git a/lib/features/settings/providers/view_models/profile_update_payload.dart b/lib/features/settings/providers/view_models/profile_update_payload.dart
+index d1326d0..7154917 100644
+--- a/lib/features/settings/providers/view_models/profile_update_payload.dart
++++ b/lib/features/settings/providers/view_models/profile_update_payload.dart
+@@ -44,6 +44,7 @@ UserUpdateWithVerificationRequest buildCurrentUserProfileUpdateRequest(
+             state.editedTimezonePrivacyFlags != state.timezonePrivacyFlags
+         ? state.editedTimezonePrivacyFlags
+         : null,
++    profileAppearance: _patchField(state.editedProfileAppearance != null, state.editedProfileAppearance),
+     accentColor: _patchField(
+       state.isEditedAccentColorSet &&
+           state.editedAccentColor != state.accentColor,
+diff --git a/lib/features/settings/providers/view_models/user_settings_view_model.dart b/lib/features/settings/providers/view_models/user_settings_view_model.dart
+index ad35321..0e7c12c 100644
+--- a/lib/features/settings/providers/view_models/user_settings_view_model.dart
++++ b/lib/features/settings/providers/view_models/user_settings_view_model.dart
+@@ -73,6 +73,8 @@ class UserSettingsViewState {
+   final String? timezone;
+   final int? timezonePrivacyFlags;
+   final int? accentColor;
++  final Map<String, Object?>? profileAppearance;
++  final Map<String, Object?>? editedProfileAppearance;
+   final String? banner;
+   final String? email;
+   final bool verified;
+@@ -177,6 +179,8 @@ class UserSettingsViewState {
+     this.timezone,
+     this.timezonePrivacyFlags,
+     this.accentColor,
++    this.profileAppearance,
++    this.editedProfileAppearance,
+     this.banner,
+     this.email,
+     this.verified = false,
+@@ -586,6 +590,7 @@ class UserSettingsViewState {
+         editedTimezonePrivacyFlags != timezonePrivacyFlags) {
+       return true;
+     }
++    if (editedProfileAppearance != null) return true;
+     if (isEditedAccentColorSet && editedAccentColor != accentColor) {
+       return true;
+     }
+@@ -692,6 +697,8 @@ class UserSettingsViewState {
+     Object? editedTimezone = _unset,
+     Object? editedTimezonePrivacyFlags = _unset,
+     Object? accentColor = _unset,
++    Object? profileAppearance = _unset,
++    Object? editedProfileAppearance = _unset,
+     Object? banner = _unset,
+     Object? email = _unset,
+     bool? verified,
+@@ -796,6 +803,10 @@ class UserSettingsViewState {
+       timezonePrivacyFlags: timezonePrivacyFlags == _unset
+           ? this.timezonePrivacyFlags
+           : timezonePrivacyFlags as int?,
++      profileAppearance: profileAppearance == _unset
++          ? this.profileAppearance : profileAppearance as Map<String, Object?>?,
++      editedProfileAppearance: editedProfileAppearance == _unset
++          ? this.editedProfileAppearance : editedProfileAppearance as Map<String, Object?>?,
+       accentColor: accentColor == _unset
+           ? this.accentColor
+           : accentColor as int?,
+@@ -1327,6 +1338,7 @@ class UserSettingsViewModel extends _$UserSettingsViewModel {
+       timezone: profile.timezone,
+       timezonePrivacyFlags: profile.timezonePrivacyFlags,
+       accentColor: profile.accentColor,
++      profileAppearance: profile.profileAppearance,
+       banner: profile.banner,
+       email: profile.email,
+       verified: profile.verified,
+@@ -1373,6 +1385,11 @@ class UserSettingsViewModel extends _$UserSettingsViewModel {
+     }
+   }
+ 
++  void updateProfileAppearance(Map<String, Object?> value) {
++    if (!state.isPremium || state.isPerGuildProfile) return;
++    state = state.copyWith(editedProfileAppearance: value);
++  }
++
+   void updateDisplayName(String value) {
+     state = state.copyWith(editedDisplayName: value);
+   }
+@@ -1757,6 +1774,7 @@ class UserSettingsViewModel extends _$UserSettingsViewModel {
+       editedTimezone: UserSettingsViewState._resetEdited,
+       editedTimezonePrivacyFlags: UserSettingsViewState._resetEdited,
+       editedAccentColor: UserSettingsViewState._resetEdited,
++      editedProfileAppearance: null,
+       editedPremiumBadgeHidden: UserSettingsViewState._resetEdited,
+       editedPremiumBadgeMasked: UserSettingsViewState._resetEdited,
+       editedPremiumBadgeTimestampHidden: UserSettingsViewState._resetEdited,
+diff --git a/lib/features/settings/utils/oauth_authorize_url.dart b/lib/features/settings/utils/oauth_authorize_url.dart
+index 9b802f5..48d0e49 100644
+--- a/lib/features/settings/utils/oauth_authorize_url.dart
++++ b/lib/features/settings/utils/oauth_authorize_url.dart
+@@ -8,8 +8,8 @@ const List<String> kOAuth2Scopes = <String>[
+ 
+ const int kMaxApplicationRedirectUris = 10;
+ 
+-const String kApplicationDocsUrl = 'https://fluxer.dev';
+-const String kApplicationDocsDomain = 'fluxer.dev';
++const String kApplicationDocsUrl = 'https://docs.veylo.sbs/';
++const String kApplicationDocsDomain = 'docs.veylo.sbs';
+ const String kExampleCallbackUrl = 'https://example.com/callback';
+ 
+ String resolveOAuthAuthorizeOrigin({
+diff --git a/lib/features/profile/presentation/widgets/profile_appearance.dart b/lib/features/profile/presentation/widgets/profile_appearance.dart
+new file mode 100644
+index 0000000..ed8ad24
+--- /dev/null
++++ b/lib/features/profile/presentation/widgets/profile_appearance.dart
+@@ -0,0 +1,166 @@
++import 'dart:math';
++
++import 'package:fluxer_app/features/ui/color_picker/fluxer_color_picker_field.dart';
++import 'package:fluxer_app/material_ui.dart';
++
++Map<String, Object?>? _section(Map<String, Object?>? appearance, String key) {
++  final value = appearance?[key];
++  return value is Map<String, Object?> ? value : null;
++}
++
++List<int> _colors(Map<String, Object?>? style) =>
++    (style?['colors'] as List<Object?>? ?? const []).whereType<int>().toList();
++
++Color _color(int rgb) => Color(0xff000000 | rgb);
++
++Gradient? profileGradient(Map<String, Object?>? appearance) {
++  final theme = _section(appearance, 'theme');
++  final primary = theme?['primary'];
++  final accent = theme?['accent'];
++  if (primary is! int || accent is! int) return null;
++  return LinearGradient(
++    begin: Alignment.topLeft,
++    end: Alignment.bottomRight,
++    colors: [_color(primary).withValues(alpha: .33), _color(accent).withValues(alpha: .47)],
++  );
++}
++
++Widget profileName(String name, TextStyle base, Map<String, Object?>? appearance, {int? maxLines, TextOverflow? overflow}) {
++  final style = _section(appearance, 'name_style');
++  final colors = _colors(style).map(_color).toList();
++  if (colors.isEmpty) return Text(name, style: base, maxLines: maxLines, overflow: overflow);
++  final effect = style?['effect'];
++  final font = switch (style?['font']) {
++    'serif' => 'serif',
++    'mono' => 'monospace',
++    'modern' => 'sans-serif',
++    _ => null,
++  };
++  final color = colors.first;
++  final shadow = switch (effect) {
++    'neon' => [Shadow(color: color, blurRadius: 10)],
++    'pop' => [Shadow(color: color.withValues(alpha: .55), offset: const Offset(2, 2))],
++    'cartoon' => [const Shadow(color: Colors.black, offset: Offset(2, 2))],
++    _ => null,
++  };
++  final gradient = colors.length > 1 &&
++      (effect == 'gradient' || effect == 'candy' || effect == 'prism');
++  final text = Text(name, maxLines: maxLines, overflow: overflow, style: base.copyWith(
++    color: gradient ? Colors.white : color,
++    fontFamily: font,
++    shadows: shadow,
++    fontWeight: effect == 'cartoon' ? FontWeight.w900 : null,
++  ));
++  return gradient ? ShaderMask(
++    blendMode: BlendMode.srcIn,
++    shaderCallback: (bounds) => LinearGradient(colors: colors).createShader(bounds),
++    child: text,
++  ) : text;
++}
++
++class ProfileAppearanceEditor extends StatelessWidget {
++  const ProfileAppearanceEditor({
++    required this.appearance,
++    required this.onChanged,
++    required this.displayName,
++    required this.premium,
++    required this.themeSection,
++    super.key,
++  });
++
++  final Map<String, Object?>? appearance;
++  final ValueChanged<Map<String, Object?>> onChanged;
++  final String displayName;
++  final bool premium;
++  final bool themeSection;
++
++  static const palette = [0x7ee7d8, 0x7ccbff, 0x7f8cff, 0xb56dff, 0xf38bd9];
++  static const fonts = {
++    'default': 'Predeterminada', 'modern': 'Moderna', 'serif': 'Clásica', 'mono': 'Monoespaciada',
++  };
++  static const effects = {
++    'solid': 'Liso', 'gradient': 'Degradado', 'neon': 'Neón',
++    'cartoon': 'Dibujo animado', 'pop': 'Pop', 'candy': 'Gominola', 'prism': 'Prisma',
++  };
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = _section(appearance, 'theme');
++    final style = _section(appearance, 'name_style');
++    final primary = theme?['primary'] as int? ?? 0x387daa;
++    final accent = theme?['accent'] as int? ?? 0xb548c4;
++    final font = style?['font'] as String? ?? 'modern';
++    final effect = style?['effect'] as String? ?? 'prism';
++    final savedColors = _colors(style);
++    final colorCount = effect == 'prism' ? 5 : (effect == 'gradient' || effect == 'candy' ? 2 : 1);
++    final colors = List<int>.generate(colorCount, (i) => i < savedColors.length ? savedColors[i] : palette[i]);
++
++    void updateTheme(int primary, int accent) => onChanged({
++      'theme': {'primary': primary, 'accent': accent}, 'name_style': style,
++    });
++    void updateName(String font, String effect, List<int> colors) => onChanged({
++      'theme': theme, 'name_style': {'font': font, 'effect': effect, 'colors': colors},
++    });
++    final title = themeSection ? 'Tema del perfil' : 'Estilo del nombre de visualización';
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: [
++        Text(title, style: Theme.of(context).textTheme.titleMedium),
++        if (!premium) const Text('Premium') else ...[
++          const SizedBox(height: 8),
++          Container(
++            width: double.infinity,
++            padding: const EdgeInsets.all(16),
++            decoration: BoxDecoration(
++              gradient: profileGradient(appearance),
++              borderRadius: BorderRadius.circular(12),
++              color: Theme.of(context).colorScheme.surface,
++            ),
++            child: profileName(displayName, Theme.of(context).textTheme.titleLarge ?? const TextStyle(), appearance),
++          ),
++          const SizedBox(height: 8),
++          if (themeSection) ...[
++            Row(children: [
++              Expanded(child: FluxerColorPickerField(label: 'Primario', value: primary, onChanged: (color) => updateTheme(color, accent))),
++              const SizedBox(width: 12),
++              Expanded(child: FluxerColorPickerField(label: 'Realce', value: accent, onChanged: (color) => updateTheme(primary, color))),
++            ]),
++            if (theme != null)
++              TextButton(onPressed: () => onChanged({'theme': null, 'name_style': style}), child: const Text('Restablecer tema')),
++          ] else ...[
++            _choice('Fuente', font, fonts, (value) => updateName(value, effect, colors)),
++            _choice('Efecto', effect, effects, (value) {
++              final count = value == 'prism' ? 5 : (value == 'gradient' || value == 'candy' ? 2 : 1);
++              updateName(font, value, List.generate(count, (i) => i < colors.length ? colors[i] : palette[i]));
++            }),
++            for (var i = 0; i < colorCount; i++)
++              FluxerColorPickerField(label: 'Color ${i + 1}', value: colors[i], onChanged: (value) {
++                final next = [...colors]..[i] = value;
++                updateName(font, effect, next);
++              }),
++            TextButton(onPressed: () {
++              final random = Random();
++              updateName(font, 'prism', List.generate(5, (_) => random.nextInt(0x1000000)));
++            }, child: const Text('Sorpréndeme')),
++            if (style != null)
++              TextButton(onPressed: () => onChanged({'theme': theme, 'name_style': null}), child: const Text('Eliminar estilo')),
++          ],
++        ],
++      ],
++    );
++  }
++
++  Widget _choice(String label, String value, Map<String, String> options, ValueChanged<String> onChanged) {
++    return Row(
++      mainAxisAlignment: MainAxisAlignment.spaceBetween,
++      children: [
++        Text(label),
++        DropdownButton<String>(
++          value: options.containsKey(value) ? value : options.keys.first,
++          items: options.entries.map((option) => DropdownMenuItem(value: option.key, child: Text(option.value))).toList(),
++          onChanged: (value) { if (value != null) onChanged(value); },
++        ),
++      ],
++    );
++  }
++}
