@@ -268,38 +268,6 @@ jobs:
                   raise SystemExit(f"Cambió el código esperado en {file}")
               file.write_text(source.replace(old, new, 1), encoding="utf-8")
 
-          crop_import = "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_sheet.dart';"
-          replace(
-              "user_profile.dart",
-              crop_import,
-              "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_layout.dart';\n"
-              + crop_import,
-          )
-          replace(
-              "user_profile.dart",
-              "    final croppedBytes = await showImageCropSheet(\n"
-              "      context,\n      imageBytes: picked.bytes,\n"
-              "      aspectRatio: isAvatar ? 1.0 : 17.0 / 6.0,\n"
-              "      title: isAvatar\n"
-              "          ? FluxerLocalizations.of(context).cropAvatar\n"
-              "          : FluxerLocalizations.of(context).cropBanner,\n"
-              "      maskShape: isAvatar ? CropMaskShape.circle : CropMaskShape.rectangle,\n"
-              "    );",
-              "    final editorBytes = isAvatar\n"
-              "        ? await imageCropFitFullAvatar(picked.bytes)\n"
-              "        : picked.bytes;\n"
-              "    if (!mounted) return;\n"
-              "    final croppedBytes = await showImageCropSheet(\n"
-              "      context,\n"
-              "      imageBytes: editorBytes,\n"
-              "      aspectRatio: isAvatar ? 1.0 : 17.0 / 6.0,\n"
-              "      title: isAvatar\n"
-              "          ? (Localizations.localeOf(context).languageCode == 'es'\n"
-              "                ? 'Editar imagen'\n"
-              "                : 'Edit image')\n"
-              "          : FluxerLocalizations.of(context).cropBanner,\n"
-              "    );",
-          )
           replace(
               "user_profile.dart",
               "    if (!state.isPremium) {",
@@ -307,46 +275,6 @@ jobs:
               "      instanceFeatureEnabledProvider(LimitKeys.featureAnimatedBanner),\n"
               "    );\n"
               "    if (!state.isPremium && !canUploadBanner) {",
-          )
-          replace(
-              "image_crop_layout.dart",
-              "Future<Size?> imageCropDecodeImageSize(Uint8List bytes) {",
-              """Future<Uint8List> imageCropFitFullAvatar(Uint8List bytes) {
-            return compute(_fitFullAvatar, bytes);
-          }
-
-          Uint8List _fitFullAvatar(Uint8List bytes) {
-            final decoded = img.decodeImage(bytes);
-            if (decoded == null) return bytes;
-
-            final source = img.bakeOrientation(decoded);
-            const canvasSize = 512;
-            const safeDiameter = 508;
-            final diagonal = sqrt(
-              source.width * source.width + source.height * source.height,
-            );
-            final scale = safeDiameter / diagonal;
-            final fitted = img.copyResize(
-              source,
-              width: max(1, (source.width * scale).floor()),
-              height: max(1, (source.height * scale).floor()),
-              interpolation: img.Interpolation.average,
-            );
-            final canvas = img.Image(
-              width: canvasSize,
-              height: canvasSize,
-              numChannels: 4,
-            );
-            img.compositeImage(
-              canvas,
-              fitted,
-              dstX: (canvasSize - fitted.width) ~/ 2,
-              dstY: (canvasSize - fitted.height) ~/ 2,
-            );
-            return img.encodePng(canvas);
-          }
-
-          Future<Size?> imageCropDecodeImageSize(Uint8List bytes) {""",
           )
           PY
 
