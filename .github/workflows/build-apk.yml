@@ -4,9 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       domain:
-        description: Dominio de tu instancia (sin https://)
+        description: Dominio de la instancia, sin https
         required: true
         default: veylo.sbs
+        type: string
+      apk_url:
+        description: URL HTTPS de descarga de la APK
+        required: false
+        type: string
+      developer_docs_url:
+        description: URL HTTPS de documentación para desarrolladores
+        required: false
+        type: string
+      whats_new_url:
+        description: URL HTTPS de Novedades
+        required: false
+        type: string
+      terms_url:
+        description: URL HTTPS de Términos
+        required: false
+        type: string
+      privacy_url:
+        description: URL HTTPS de Privacidad
+        required: false
+        type: string
+      desktop_url:
+        description: URL HTTPS de descarga de escritorio
+        required: false
+        type: string
+      ios_url:
+        description: URL HTTPS de descarga para iOS
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -15,11 +44,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+
     steps:
       - name: Checkout con submódulos
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Aplicar personalización Premium del perfil
+        run: |
+          git apply --check patches/veylo-perfil-android.patch
+          git -C dart_sdk apply --check ../patches/veylo-perfil-dart-sdk.patch
+          git apply patches/veylo-perfil-android.patch
+          git -C dart_sdk apply ../patches/veylo-perfil-dart-sdk.patch
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -49,44 +86,138 @@ jobs:
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: ${{ runner.os }}-pub-
 
-      - name: Configurar instancia y nombre
+      - name: Configurar instancia y enlaces de Veylo
         env:
           DOMAIN: ${{ inputs.domain }}
+          APK_URL: ${{ inputs.apk_url }}
+          DEVELOPER_DOCS_URL: ${{ inputs.developer_docs_url }}
+          WHATS_NEW_URL: ${{ inputs.whats_new_url }}
+          TERMS_URL: ${{ inputs.terms_url }}
+          PRIVACY_URL: ${{ inputs.privacy_url }}
+          DESKTOP_URL: ${{ inputs.desktop_url }}
+          IOS_URL: ${{ inputs.ios_url }}
         run: |
           python3 - <<'PY'
-          import os, re
+          import os
+          import re
           from pathlib import Path
+          from urllib.parse import urlsplit
 
           domain = os.environ["DOMAIN"].strip().lower()
-          if len(domain) > 253 or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", domain):
+          label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+          if len(domain) > 253 or not re.fullmatch(rf"(?:{label}\.)+{label}", domain):
               raise SystemExit("Escribe solo el dominio, sin https:// ni rutas.")
+
+          def url(name, default):
+              value = os.environ.get(name, "").strip() or default
+              parsed = urlsplit(value)
+              if (
+                  parsed.scheme != "https"
+                  or not parsed.hostname
+                  or parsed.username is not None
+                  or any(c.isspace() or c in "'\"\\$`<>" for c in value)
+              ):
+                  raise SystemExit(f"Usa una URL HTTPS válida para {name}")
+              return value
+
+          home = f"https://{domain}"
+          releases = "https://github.com/natie1515/Suy/releases"
+          docs = url("DEVELOPER_DOCS_URL", f"https://docs.{domain}/")
+          news = url("WHATS_NEW_URL", releases)
+          terms = url("TERMS_URL", f"{home}/terms")
+          privacy = url("PRIVACY_URL", f"{home}/privacy")
+          desktop = url("DESKTOP_URL", f"{home}/")
+          apk = url("APK_URL", f"{releases}/latest")
+          ios = url("IOS_URL", f"{home}/")
+
+          def replace_literal(path, old, new):
+              file = Path(path)
+              source = file.read_text(encoding="utf-8")
+              if source.count(old) != 1:
+                  raise SystemExit(f"No se encontró el ajuste esperado en {path}: {old}")
+              file.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          rules = [
+              (r"https://play\.google\.com/store/apps/details\?id=com\.fluxer\b[^\s'\"<>)\\]*", apk),
+              (r"https://apps\.apple\.com/(?:[a-z]{2}/)?app/(?:id6761338365|fluxer)(?:[/-][^\s'\"<>)\\]*)?", ios),
+              (r"https://(?:www\.)?fluxer\.com/(?:terms(?:-of-service)?|tos)(?![\w-])[^\s'\"<>)\\]*", terms),
+              (r"https://(?:www\.)?fluxer\.com/privacy(?:-policy)?(?![\w-])[^\s'\"<>)\\]*", privacy),
+              (r"https://(?:www\.|docs\.)?fluxer\.com/downloads?(?![\w-])[^\s'\"<>)\\]*", desktop),
+              (r"https://(?:docs\.fluxer\.com(?:/[^\s'\"<>)\\]*)?|(?:www\.)?fluxer\.com/developers?(?![\w-])[^\s'\"<>)\\]*)", docs),
+          ]
+          for path in sorted(Path("lib").rglob("*.dart")):
+              if path.name.endswith((".g.dart", ".freezed.dart")):
+                  continue
+              source = path.read_text(encoding="utf-8")
+              updated = source
+              for pattern, destination in rules:
+                  updated = re.sub(pattern, lambda _: destination, updated, flags=re.IGNORECASE)
+              if updated != source:
+                  path.write_text(updated, encoding="utf-8")
 
           constants = Path("lib/core/instance/instance_constants.dart")
           source = constants.read_text(encoding="utf-8")
-          for key, value in {
-              "defaultApiBaseUrl": f"https://{domain}/api/v1",
+          values = {
+              "defaultApiBaseUrl": f"{home}/api/v1",
               "defaultGatewayUrl": f"wss://{domain}/gateway",
               "defaultInstanceInputUrl": domain,
-              "defaultTermsUrl": f"https://{domain}/terms",
-              "defaultPrivacyUrl": f"https://{domain}/privacy",
-              "helpCenterUrl": f"https://{domain}/help",
+              "defaultTermsUrl": terms,
+              "defaultPrivacyUrl": privacy,
+              "helpCenterUrl": f"{home}/help",
               "defaultProductName": "Veylo",
-          }.items():
-              source, count = re.subn(rf"({key}\s*=\s*)'[^']*'", lambda match: f"{match[1]}'{value}'", source)
+          }
+          for key, value in values.items():
+              source, count = re.subn(
+                  rf"(\b{key}\s*=\s*)'[^']*'",
+                  lambda match: f"{match[1]}'{value}'",
+                  source,
+              )
               if count != 1:
                   raise SystemExit(f"No se encontró un ajuste único: {key}")
           constants.write_text(source, encoding="utf-8")
 
+          oauth = "lib/features/settings/utils/oauth_authorize_url.dart"
+          replace_literal(oauth, "'https://fluxer.dev'", f"'{docs}'")
+          replace_literal(oauth, "'fluxer.dev'", f"'{urlsplit(docs).hostname}'")
+          replace_literal(
+              "lib/core/constants/external_urls.dart",
+              "'$fluxerMarketing/patch-notes'",
+              f"'{news}'",
+          )
+
           gradle = Path("android/app/build.gradle.kts")
           source = gradle.read_text(encoding="utf-8")
-          source, count = re.subn(r'(manifestPlaceholders\["appLabel"\]\s*=\s*)"Fluxer"', r'\1"Veylo"', source)
-          if count < 1:
+          source, count = re.subn(
+              r'(manifestPlaceholders\["appLabel"\]\s*=\s*)"Fluxer"',
+              r'\1"Veylo"',
+              source,
+          )
+          if not count:
               raise SystemExit("No se encontró la etiqueta appLabel de Android.")
           gradle.write_text(source, encoding="utf-8")
 
           sheet = Path("lib/features/settings/presentation/sheets/account_delete_sheet.dart")
           source = sheet.read_text(encoding="utf-8")
-          sheet.write_text(source.replace("https://play.google.com/store/account/subscriptions", f"https://{domain}"), encoding="utf-8")
+          sheet.write_text(
+              source.replace("https://play.google.com/store/account/subscriptions", home),
+              encoding="utf-8",
+          )
+
+          for file in Path("lib/l10n").rglob("fluxer_es*.arb"):
+              source = file.read_text(encoding="utf-8")
+              updated = source.replace(
+                  "Política de privacidad de la app Fluxer",
+                  "Política de privacidad de la app Veylo",
+              )
+              if updated != source:
+                  file.write_text(updated, encoding="utf-8")
+          file = Path("lib/l10n/generated/fluxer_localizations_es.dart")
+          if file.is_file():
+              source = file.read_text(encoding="utf-8")
+              file.write_text(source.replace(
+                  "Política de privacidad de la app Fluxer",
+                  "Política de privacidad de la app Veylo",
+              ), encoding="utf-8")
           PY
 
       - name: Ajustar portada del perfil a 680 × 240
@@ -120,25 +251,29 @@ jobs:
           path.write_text(source[:first] + replacement + source[last:], encoding="utf-8")
           PY
 
-      - name: Editar avatar con marco cuadrado y opción de foto completa
+      - name: Mantener Omitir en el editor de avatar y mostrar la portada permitida
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
           widgets = Path("lib/features/settings/presentation/widgets")
 
-          def replace(file, old, new):
-              path = widgets / file
-              source = path.read_text(encoding="utf-8")
+          def replace(name, old, new):
+              file = widgets / name
+              source = file.read_text(encoding="utf-8")
               if source.count(old) != 1:
-                  raise SystemExit(f"Cambió el código del editor en {path}")
-              path.write_text(source.replace(old, new), encoding="utf-8")
+                  raise SystemExit(f"Cambió el código esperado en {file}")
+              file.write_text(source.replace(old, new, 1), encoding="utf-8")
 
-          replace("user_profile.dart",
-              "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_sheet.dart';",
+          crop_import = "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_sheet.dart';"
+          replace(
+              "user_profile.dart",
+              crop_import,
               "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_layout.dart';\n"
-              "import 'package:fluxer_app/features/settings/presentation/widgets/image_crop_sheet.dart';")
-          replace("user_profile.dart",
+              + crop_import,
+          )
+          replace(
+              "user_profile.dart",
               "    final croppedBytes = await showImageCropSheet(\n"
               "      context,\n      imageBytes: picked.bytes,\n"
               "      aspectRatio: isAvatar ? 1.0 : 17.0 / 6.0,\n"
@@ -160,14 +295,18 @@ jobs:
               "                ? 'Editar imagen'\n"
               "                : 'Edit image')\n"
               "          : FluxerLocalizations.of(context).cropBanner,\n"
-              "      skipLabel: isAvatar\n"
-              "          ? (Localizations.localeOf(context).languageCode == 'es'\n"
-              "                ? 'Usar foto completa'\n"
-              "                : 'Use full photo')\n"
-              "          : null,\n"
-              "    );")
-
-          replace("image_crop_layout.dart",
+              "    );",
+          )
+          replace(
+              "user_profile.dart",
+              "    if (!state.isPremium) {",
+              "    final canUploadBanner = ref.watch(\n"
+              "      instanceFeatureEnabledProvider(LimitKeys.featureAnimatedBanner),\n"
+              "    );\n"
+              "    if (!state.isPremium && !canUploadBanner) {",
+          )
+          replace(
+              "image_crop_layout.dart",
               "Future<Size?> imageCropDecodeImageSize(Uint8List bytes) {",
               """Future<Uint8List> imageCropFitFullAvatar(Uint8List bytes) {
             return compute(_fitFullAvatar, bytes);
@@ -204,7 +343,8 @@ jobs:
             return img.encodePng(canvas);
           }
 
-          Future<Size?> imageCropDecodeImageSize(Uint8List bytes) {""")
+          Future<Size?> imageCropDecodeImageSize(Uint8List bytes) {""",
+          )
           PY
 
       - name: Configurar Firebase
@@ -212,29 +352,35 @@ jobs:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
           DOMAIN: ${{ inputs.domain }}
         run: |
-          python3 - <<'PYTHON'
-          import json, os
+          python3 - <<'PY'
+          import json
+          import os
           from pathlib import Path
 
           config = json.loads(os.environ["FIREBASE_CONFIG"] or "null")
           if not config:
-              raise SystemExit("Falta FIREBASE_GOOGLE_SERVICES_JSON.")
-          packages = [client["client_info"]["android_client_info"]["package_name"]
-                      for client in config.get("client", [])
-                      if "android_client_info" in client.get("client_info", {})]
-          if "com.fluxer" not in packages:
+              raise SystemExit("Falta el secreto FIREBASE_GOOGLE_SERVICES_JSON.")
+
+          client = next(
+              (entry for entry in config.get("client", [])
+               if entry.get("client_info", {}).get("android_client_info", {})
+               .get("package_name") == "com.fluxer"),
+              None,
+          )
+          if client is None:
               raise SystemExit("El JSON de Firebase debe incluir com.fluxer.")
+
           output = Path("android/app/src/stableFcm/google-services.json")
           output.parent.mkdir(parents=True, exist_ok=True)
           output.write_text(json.dumps(config), encoding="utf-8")
 
-          client = next(entry for entry in config["client"]
-                        if entry.get("client_info", {}).get("android_client_info", {})
-                        .get("package_name") == "com.fluxer")
           project = config["project_info"]
           fields = {
-              "apiKey": next((item.get("current_key") for item in client.get("api_key", [])
-                              if item.get("current_key")), None),
+              "apiKey": next(
+                  (item["current_key"] for item in client.get("api_key", [])
+                   if item.get("current_key")),
+                  None,
+              ),
               "appId": client["client_info"].get("mobilesdk_app_id"),
               "messagingSenderId": project.get("project_number"),
               "projectId": project.get("project_id"),
@@ -248,28 +394,27 @@ jobs:
               "    " + key + ": " + json.dumps(value).replace("$", r"\$") + ",\n"
               for key, value in fields.items()
           )
-          dart_options = Path("packages/fluxer_fcm/lib/firebase_options.dart")
-          if not dart_options.parent.is_dir():
-              raise SystemExit("No se encontró el paquete fluxer_fcm.")
-          dart_options.write_text(
-              "// Generated from the Android Firebase configuration.\n"
+          options = Path("packages/fluxer_fcm/lib/firebase_options.dart")
+          options.write_text(
               "import 'package:firebase_core/firebase_core.dart';\n\n"
               "class DefaultFirebaseOptions {\n"
               "  static const FirebaseOptions currentPlatform = FirebaseOptions(\n"
-              + arguments +
-              "  );\n"
-              "}\n",
+              + arguments
+              + "  );\n}\n",
               encoding="utf-8",
           )
 
           relay = Path("lib/core/push/web_push/web_push_relay.dart")
-          text = relay.read_text(encoding="utf-8")
+          source = relay.read_text(encoding="utf-8")
           old = "const String kPushRelayOrigin = 'https://push.fluxer.com';"
-          if text.count(old) != 1:
-              raise SystemExit("No se encontró la configuración del relay en el cliente.")
+          if source.count(old) != 1:
+              raise SystemExit("No se encontró el relay FCM esperado.")
           domain = os.environ["DOMAIN"].strip().lower()
-          relay.write_text(text.replace(old, f"const String kPushRelayOrigin = 'https://{domain}';"), encoding="utf-8")
-          PYTHON
+          relay.write_text(
+              source.replace(old, f"const String kPushRelayOrigin = 'https://{domain}';", 1),
+              encoding="utf-8",
+          )
+          PY
           dart tool/configure_build.dart --profile=android-fcm
 
       - name: Rust para Android
@@ -290,21 +435,17 @@ jobs:
       - name: Liberar disco y ajustar memoria
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
-          active_swap="$(swapon --noheadings --show=NAME)"
-          if [[ -n "$active_swap" ]]; then
-            echo "Se usará el swap activo del runner."
-          else
+          if [[ -z "$(swapon --noheadings --show=NAME)" ]]; then
             swap_path="$(mktemp /var/tmp/veylo-swap.XXXXXX)"
             sudo fallocate -l 8G "$swap_path"
             sudo mkswap "$swap_path"
             sudo swapon "$swap_path"
           fi
-          free -h
           sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
 
       - name: Compilar APK arm64
         run: |
-          test -s android/app/src/stableFcm/google-services.json || { echo "Falta google-services.json para stableFcm" >&2; exit 1; }
+          test -s android/app/src/stableFcm/google-services.json
           flutter build apk --release \
             --target-platform android-arm64 \
             --flavor stableFcm \
@@ -315,7 +456,7 @@ jobs:
           shopt -s nullglob
           apks=(build/app/outputs/flutter-apk/*-release.apk)
           if [[ ${#apks[@]} -ne 1 ]]; then
-            echo "Se esperaba un APK release, se encontraron ${#apks[@]}." >&2
+            echo "Se esperaba una APK release y se encontraron ${#apks[@]}." >&2
             exit 1
           fi
           cp "${apks[0]}" Veylo-FCM-arm64.apk
@@ -334,4 +475,4 @@ jobs:
         run: |
           gh release create "veylo-fcm-$GITHUB_RUN_NUMBER" Veylo-FCM-arm64.apk \
             --title "Veylo APK #$GITHUB_RUN_NUMBER" \
-            --notes "APK firmado con la clave debug. Dominio: $DOMAIN"
+            --notes "APK firmada con la clave debug. Dominio: $DOMAIN"
