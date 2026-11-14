@@ -1,0 +1,63 @@
+diff --git a/lib/features/voice/utils/media/voice_video_claims.dart b/lib/features/voice/utils/media/voice_video_claims.dart
+index 590870d..51933a4 100644
+--- a/lib/features/voice/utils/media/voice_video_claims.dart
++++ b/lib/features/voice/utils/media/voice_video_claims.dart
+@@ -35,6 +35,8 @@ class _SourceClaims {
+   final List<VoiceVideoClaim> claims = <VoiceVideoClaim>[];
+   Timer? grace;
+   Timer? suspend;
++  Timer? screenShareRetry;
++  int screenShareRetries = 0;
+   String? signature;
+ 
+   bool get isIdle => claims.isEmpty && grace == null;
+@@ -111,6 +113,9 @@ class VoiceVideoClaims {
+     }
+     state.suspend?.cancel();
+     state.suspend = null;
++    state.screenShareRetry?.cancel();
++    state.screenShareRetry = null;
++    state.screenShareRetries = 0;
+     state.grace = Timer(kVoiceVideoUnsubscribeGrace, () {
+       state
+         ..grace = null
+@@ -156,12 +161,39 @@ class VoiceVideoClaims {
+       final VideoQuality quality = _backgrounded && _isFocus(source)
+           ? _focusQuality ?? _highestQuality(state.claims)
+           : _highestQuality(state.claims);
++      if (source == TrackSource.screenShareVideo &&
++          _participant.screenShareTrack != null) {
++        state.screenShareRetry?.cancel();
++        state.screenShareRetry = null;
++        state.screenShareRetries = 0;
++      }
+       final String signature = _signature(source, quality);
+       if (signature == state.signature) {
+         return;
+       }
+       state.signature = signature;
+       _subscribe(source, quality, state, signature);
++      if (source == TrackSource.screenShareVideo) {
++        _retryScreenShareIfPending(state);
++      }
++    });
++  }
++
++  void _retryScreenShareIfPending(_SourceClaims state) {
++    if (state.screenShareRetry != null ||
++        state.screenShareRetries >= 3 ||
++        !_participant.hasScreenShare ||
++        _participant.screenShareTrack != null) {
++      return;
++    }
++    state.screenShareRetry = Timer(const Duration(seconds: 2), () {
++      state.screenShareRetry = null;
++      if (state.claims.isEmpty || _participant.screenShareTrack != null) {
++        return;
++      }
++      state.screenShareRetries++;
++      state.signature = null;
++      _sync();
+     });
+   }
+ 
