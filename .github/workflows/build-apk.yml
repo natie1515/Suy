@@ -67,6 +67,11 @@ jobs:
           git apply --check patches/veylo-barra-android.patch
           git apply patches/veylo-barra-android.patch
 
+      - name: Corregir reproducción de transmisiones en Android
+        run: |
+          git apply --check patches/veylo-transmisiones-android.patch patches/veylo-reintento-transmisiones.patch
+          git apply patches/veylo-transmisiones-android.patch patches/veylo-reintento-transmisiones.patch
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
