@@ -154,8 +154,133 @@ index 455998c..55274c2 100644
            avatarUrl: profileDisplay.avatarUrl,
            avatarColor: response.user.avatarColor,
            bannerColor:
+diff --git a/lib/features/settings/presentation/widgets/profile_preview_card.dart b/lib/features/settings/presentation/widgets/profile_preview_card.dart
+index 9c1122a..2359683 100644
+--- a/lib/features/settings/presentation/widgets/profile_preview_card.dart
++++ b/lib/features/settings/presentation/widgets/profile_preview_card.dart
+@@ -1,3 +1,4 @@
++import 'package:fluxer_app/features/profile/presentation/widgets/profile_appearance.dart';
+ import 'dart:convert';
+ import 'dart:typed_data';
+ 
+@@ -38,9 +39,16 @@ const double _kContentPaddingH = 16;
+ const double _kAvatarLeft = 10;
+ 
+ class ProfilePreviewCard extends ConsumerStatefulWidget {
+-  const ProfilePreviewCard({required this.state, super.key});
++  const ProfilePreviewCard({
++    required this.state,
++    this.onEditAvatar,
++    this.onEditBanner,
++    super.key,
++  });
+ 
+   final UserSettingsViewState state;
++  final VoidCallback? onEditAvatar;
++  final VoidCallback? onEditBanner;
+ 
+   @override
+   ConsumerState<ProfilePreviewCard> createState() => _ProfilePreviewCardState();
+@@ -215,7 +223,12 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+         const avatarTotal = _kAvatarSize + _kAvatarBorderWidth * 2;
+         final headerH = avatarTop + avatarTotal;
+ 
+-        return Stack(
++        return DecoratedBox(
++          decoration: BoxDecoration(
++            gradient: s.isPerGuildProfile ? null :
++                profileGradient(s.editedProfileAppearance ?? s.profileAppearance),
++          ),
++          child: Stack(
+           children: [
+             Column(
+               crossAxisAlignment: CrossAxisAlignment.stretch,
+@@ -295,6 +308,7 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+                 ),
+               ),
+           ],
++          ),
+         );
+       },
+     );
+@@ -335,7 +349,13 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+         errorBuilder: (_, _, _) => ColoredBox(color: accentColor),
+       );
+     } else {
+-      bannerContent = ColoredBox(color: accentColor);
++      bannerContent = DecoratedBox(
++        decoration: BoxDecoration(
++          color: accentColor,
++          gradient: s.isPerGuildProfile ? null :
++              profileGradient(s.editedProfileAppearance ?? s.profileAppearance),
++        ),
++      );
+     }
+ 
+     final avatarBytes = _avatarBytes();
+@@ -354,6 +374,12 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+             height: bannerH,
+             child: bannerContent,
+           ),
++          if (widget.onEditBanner != null)
++            PositionedDirectional(
++              top: 8,
++              end: 8,
++              child: _editPhotoButton(widget.onEditBanner!, 'Cambiar portada'),
++            ),
+           PositionedDirectional(
+             start: _kAvatarLeft,
+             top: avatarTop,
+@@ -385,11 +411,31 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+                     ),
+             ),
+           ),
++          if (widget.onEditAvatar != null)
++            PositionedDirectional(
++              start: _kAvatarLeft + _kAvatarSize - 32,
++              top: avatarTop,
++              child: _editPhotoButton(widget.onEditAvatar!, 'Cambiar avatar'),
++            ),
+         ],
+       ),
+     );
+   }
+ 
++  Widget _editPhotoButton(VoidCallback action, String label) {
++    return DecoratedBox(
++      decoration: BoxDecoration(
++        color: Colors.black.withValues(alpha: .62),
++        shape: BoxShape.circle,
++      ),
++      child: IconButton(
++        tooltip: label,
++        onPressed: action,
++        icon: const PhosphorIcon(PhosphorIconsBold.pencilSimple, color: Colors.white, size: 18),
++      ),
++    );
++  }
++
+   Widget _buildUserInfo(
+     UserSettingsViewState s,
+     FluxerColorTheme colors,
+@@ -401,12 +447,13 @@ class _ProfilePreviewCardState extends ConsumerState<ProfilePreviewCard> {
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+-        Text(
++        profileName(
+           _effectiveDisplayName(),
+-          style: textStyles.heading.copyWith(
++          textStyles.heading.copyWith(
+             color: colors.textPrimary,
+             fontWeight: FontWeight.w500,
+           ),
++          s.isPerGuildProfile ? null : (s.editedProfileAppearance ?? s.profileAppearance),
+           maxLines: 1,
+           overflow: TextOverflow.ellipsis,
+         ),
 diff --git a/lib/features/settings/presentation/widgets/user_profile.dart b/lib/features/settings/presentation/widgets/user_profile.dart
-index 8d0dacd..f4f0c34 100644
+index 8d0dacd..1afbd09 100644
 --- a/lib/features/settings/presentation/widgets/user_profile.dart
 +++ b/lib/features/settings/presentation/widgets/user_profile.dart
 @@ -1,5 +1,7 @@
@@ -166,7 +291,28 @@ index 8d0dacd..f4f0c34 100644
  import 'package:flutter_riverpod/flutter_riverpod.dart';
  import 'package:fluxer_app/core/limits/instance_limit_provider.dart';
  import 'package:fluxer_app/core/limits/limit_key.dart';
-@@ -504,6 +506,14 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+@@ -484,6 +486,20 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         _buildProfileTypeSelector(state, vm, layout, l10n),
++                        if (!state.isPerGuildProfile) ...[
++                          SizedBox(height: layout.s4),
++                          ClipRRect(
++                            borderRadius: BorderRadius.circular(16),
++                            child: ProfilePreviewCard(
++                              state: state,
++                              onEditAvatar: () => _handleImageUpload(isAvatar: true),
++                              onEditBanner: state.isPremium ||
++                                      ref.watch(instanceFeatureEnabledProvider(LimitKeys.featureAnimatedBanner))
++                                  ? () => _handleImageUpload(isAvatar: false)
++                                  : null,
++                            ),
++                          ),
++                        ],
+                         if (state.isLoadingGuildProfile) ...[
+                           SizedBox(height: layout.s6),
+                           const Center(child: FluxerLoadingSpinner()),
+@@ -504,6 +520,14 @@ class _UserProfileState extends ConsumerState<UserProfile> {
                              onTapOutside: (_) =>
                                  FocusManager.instance.primaryFocus?.unfocus(),
                            ),
@@ -181,11 +327,35 @@ index 8d0dacd..f4f0c34 100644
                          ],
                          if (state.isPerGuildProfile &&
                              !state.isLoadingGuildProfile) ...[
-@@ -615,6 +625,16 @@ class _UserProfileState extends ConsumerState<UserProfile> {
-                             child: _buildBioSection(state, vm, layout, l10n),
+@@ -603,6 +627,10 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+                             ),
                            ),
                          ),
 +                        if (!state.isPerGuildProfile) ...[
++                          SizedBox(height: layout.s6),
++                          ProfileBadgeSettingsSection(state: state),
++                        ],
+                         SizedBox(height: layout.s6),
+                         Opacity(
+                           opacity:
+@@ -615,22 +643,20 @@ class _UserProfileState extends ConsumerState<UserProfile> {
+                             child: _buildBioSection(state, vm, layout, l10n),
+                           ),
+                         ),
+-                        SizedBox(height: layout.s8),
+-                        FluxerGestureDetector(
+-                          onTap: () =>
+-                              FocusManager.instance.primaryFocus?.unfocus(),
+-                          behavior: HitTestBehavior.opaque,
+-                          child: ProfilePreviewCard(state: state),
+-                        ),
+                         if (!state.isPerGuildProfile) ...[
+-                          SizedBox(height: layout.s8),
+-                          FluxerGestureDetector(
+-                            onTap: () =>
+-                                FocusManager.instance.primaryFocus?.unfocus(),
+-                            behavior: HitTestBehavior.opaque,
+-                            child: ProfileBadgeSettingsSection(state: state),
 +                          SizedBox(height: layout.s6),
 +                          ProfileAppearanceEditor(
 +                            appearance: state.editedProfileAppearance ?? state.profileAppearance,
@@ -193,11 +363,15 @@ index 8d0dacd..f4f0c34 100644
 +                            displayName: _displayNameController.text.isEmpty ? state.username : _displayNameController.text,
 +                            premium: state.isPremium,
 +                            themeSection: true,
-+                          ),
+                           ),
+                         ],
++                        if (state.isPerGuildProfile) ...[
++                          SizedBox(height: layout.s8),
++                          ProfilePreviewCard(state: state),
 +                        ],
-                         SizedBox(height: layout.s8),
-                         FluxerGestureDetector(
-                           onTap: () =>
+                       ],
+                     ),
+                   ],
 diff --git a/lib/features/settings/providers/view_models/profile_update_payload.dart b/lib/features/settings/providers/view_models/profile_update_payload.dart
 index d1326d0..7154917 100644
 --- a/lib/features/settings/providers/view_models/profile_update_payload.dart
@@ -288,30 +462,203 @@ index ad35321..0e7c12c 100644
        editedPremiumBadgeHidden: UserSettingsViewState._resetEdited,
        editedPremiumBadgeMasked: UserSettingsViewState._resetEdited,
        editedPremiumBadgeTimestampHidden: UserSettingsViewState._resetEdited,
-diff --git a/lib/features/settings/utils/oauth_authorize_url.dart b/lib/features/settings/utils/oauth_authorize_url.dart
-index 9b802f5..48d0e49 100644
---- a/lib/features/settings/utils/oauth_authorize_url.dart
-+++ b/lib/features/settings/utils/oauth_authorize_url.dart
-@@ -8,8 +8,8 @@ const List<String> kOAuth2Scopes = <String>[
+diff --git a/lib/features/ui/color_picker/fluxer_color_picker_field.dart b/lib/features/ui/color_picker/fluxer_color_picker_field.dart
+index b8822d7..52a74cc 100644
+--- a/lib/features/ui/color_picker/fluxer_color_picker_field.dart
++++ b/lib/features/ui/color_picker/fluxer_color_picker_field.dart
+@@ -418,8 +418,10 @@ class _ColorArea extends StatelessWidget {
+     required this.saturation,
+     required this.value,
+     required this.onChanged,
++    this.square = false,
+   });
  
- const int kMaxApplicationRedirectUris = 10;
++  final bool square;
+   final double hue;
+   final double saturation;
+   final double value;
+@@ -438,7 +440,7 @@ class _ColorArea extends StatelessWidget {
+     return LayoutBuilder(
+       builder: (context, constraints) {
+         final width = constraints.maxWidth;
+-        final size = Size(width, _kColorAreaHeight);
++        final size = Size(width, square ? width : _kColorAreaHeight);
+         return FluxerGestureDetector(
+           onPanStart: (details) =>
+               _handleInteraction(details.localPosition, size),
+@@ -448,7 +450,7 @@ class _ColorArea extends StatelessWidget {
+               _handleInteraction(details.localPosition, size),
+           child: SizedBox(
+             width: width,
+-            height: _kColorAreaHeight,
++            height: size.height,
+             child: ClipRRect(
+               borderRadius: layout.radiusSm,
+               child: CustomPaint(
+@@ -458,7 +460,7 @@ class _ColorArea extends StatelessWidget {
+                   children: [
+                     Positioned(
+                       left: saturation * width - _kThumbSize / 2,
+-                      top: (1.0 - value) * _kColorAreaHeight - _kThumbSize / 2,
++                      top: (1.0 - value) * size.height - _kThumbSize / 2,
+                       child: _Thumb(
+                         color: HSVColor.fromAHSV(
+                           1,
+@@ -507,7 +509,9 @@ class _ColorAreaPainter extends CustomPainter {
+ }
  
--const String kApplicationDocsUrl = 'https://fluxer.dev';
--const String kApplicationDocsDomain = 'fluxer.dev';
-+const String kApplicationDocsUrl = 'https://docs.veylo.sbs/';
-+const String kApplicationDocsDomain = 'docs.veylo.sbs';
- const String kExampleCallbackUrl = 'https://example.com/callback';
+ class _HueSlider extends StatelessWidget {
+-  const _HueSlider({required this.hue, required this.onChanged});
++  const _HueSlider({required this.hue, required this.onChanged, this.trackHeight = _kHueTrackHeight});
++
++  final double trackHeight;
  
- String resolveOAuthAuthorizeOrigin({
+   final double hue;
+   final ValueChanged<double> onChanged;
+@@ -533,7 +537,7 @@ class _HueSlider extends StatelessWidget {
+               _handleInteraction(details.localPosition, width),
+           child: SizedBox(
+             width: width,
+-            height: _kHueTrackHeight,
++            height: trackHeight,
+             child: ClipRRect(
+               borderRadius: layout.radiusSm,
+               child: CustomPaint(
+@@ -543,7 +547,7 @@ class _HueSlider extends StatelessWidget {
+                   children: [
+                     Positioned(
+                       left: (hue / 360) * width - _kThumbSize / 2,
+-                      top: (_kHueTrackHeight - _kThumbSize) / 2,
++                      top: (trackHeight - _kThumbSize) / 2,
+                       child: _Thumb(
+                         color: HSVColor.fromAHSV(1, hue, 1, 1).toColor(),
+                       ),
+@@ -618,3 +622,114 @@ Widget fluxerColorPickerFieldPreview() {
+     onChanged: (_) {},
+   );
+ }
++
++
++Future<int?> showProfileColorPicker(BuildContext context, int value) {
++  return FluxerBottomSheet.show<int>(
++    context,
++    builder: (sheetContext, _) => _ProfileColorPicker(initialValue: value),
++  );
++}
++
++class _ProfileColorPicker extends StatefulWidget {
++  const _ProfileColorPicker({required this.initialValue});
++  final int initialValue;
++
++  @override
++  State<_ProfileColorPicker> createState() => _ProfileColorPickerState();
++}
++
++class _ProfileColorPickerState extends State<_ProfileColorPicker> {
++  static const presets = [0x896168, 0xc19aa2, 0x663eb0, 0x3bad9f, 0x8dbb46];
++  late HSVColor _hsv = HSVColor.fromColor(_intToColor(widget.initialValue));
++  late final TextEditingController _hex =
++      TextEditingController(text: _intToHex(widget.initialValue));
++
++  @override
++  void dispose() {
++    _hex.dispose();
++    super.dispose();
++  }
++
++  void _select(HSVColor value) {
++    setState(() => _hsv = value);
++    _hex.text = _intToHex(_colorToInt(value.toColor()));
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final selected = _colorToInt(_hsv.toColor());
++    return Padding(
++      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
++      child: Column(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          FluxerBottomSheetHeader(
++            title: 'Elegir un color',
++            trailing: FluxerButton.primary(
++              size: FluxerButtonSize.small,
++              label: 'Seleccionar',
++              onPressed: RegExp(r'^#?[0-9a-fA-F]{6}$').hasMatch(_hex.text)
++                  ? () => Navigator.of(context).pop(selected) : null,
++            ),
++          ),
++          FluxerInput(
++            controller: _hex,
++            label: 'Hexadecimal',
++            inputFormatters: [LengthLimitingTextInputFormatter(7)],
++            onChanged: (text) {
++              final valid = RegExp(r'^#?[0-9a-fA-F]{6}$').hasMatch(text);
++              setState(() {
++                if (valid) _hsv = HSVColor.fromColor(_intToColor(
++                  int.parse(text.replaceFirst('#', ''), radix: 16),
++                ));
++              });
++            },
++          ),
++          const SizedBox(height: 12),
++          Wrap(
++            alignment: WrapAlignment.spaceBetween,
++            spacing: 10,
++            runSpacing: 6,
++            children: [
++              for (final color in [...presets.where((color) => color != selected), selected])
++                FluxerTappable(
++                  onTap: () => _select(HSVColor.fromColor(_intToColor(color))),
++                  semanticLabel: _intToHex(color),
++                  builder: (_, _) => Container(
++                    width: 36,
++                    height: 36,
++                    decoration: BoxDecoration(
++                      color: _intToColor(color),
++                      borderRadius: BorderRadius.circular(6),
++                    ),
++                    child: color == selected ? const PhosphorIcon(PhosphorIconsBold.check, size: 20) : null,
++                  ),
++                ),
++            ],
++          ),
++          const SizedBox(height: 16),
++          ConstrainedBox(
++            constraints: BoxConstraints(
++              maxWidth: (MediaQuery.sizeOf(context).height * .32).clamp(140.0, 270.0).toDouble(),
++            ),
++            child: Column(
++              children: [
++                _ColorArea(
++                  square: true,
++                  hue: _hsv.hue,
++                  saturation: _hsv.saturation,
++                  value: _hsv.value,
++                  onChanged: (saturation, value) =>
++                      _select(_hsv.withSaturation(saturation).withValue(value)),
++                ),
++                const SizedBox(height: 12),
++                _HueSlider(hue: _hsv.hue, trackHeight: 30, onChanged: (hue) => _select(_hsv.withHue(hue))),
++              ],
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
 diff --git a/lib/features/profile/presentation/widgets/profile_appearance.dart b/lib/features/profile/presentation/widgets/profile_appearance.dart
 new file mode 100644
-index 0000000..ed8ad24
+index 0000000..824e5f5
 --- /dev/null
 +++ b/lib/features/profile/presentation/widgets/profile_appearance.dart
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,258 @@
 +import 'dart:math';
 +
++import 'package:fluxer_app/features/ui/bottom_sheet/fluxer_bottom_sheet.dart';
 +import 'package:fluxer_app/features/ui/color_picker/fluxer_color_picker_field.dart';
++import 'package:fluxer_app/shared/icons/phosphor.dart';
 +import 'package:fluxer_app/material_ui.dart';
 +
 +Map<String, Object?>? _section(Map<String, Object?>? appearance, String key) {
@@ -376,6 +723,7 @@ index 0000000..ed8ad24
 +    required this.displayName,
 +    required this.premium,
 +    required this.themeSection,
++    this.expanded = false,
 +    super.key,
 +  });
 +
@@ -384,6 +732,7 @@ index 0000000..ed8ad24
 +  final String displayName;
 +  final bool premium;
 +  final bool themeSection;
++  final bool expanded;
 +
 +  static const palette = [0x7ee7d8, 0x7ccbff, 0x7f8cff, 0xb56dff, 0xf38bd9];
 +  static const fonts = {
@@ -413,10 +762,64 @@ index 0000000..ed8ad24
 +      'theme': theme, 'name_style': {'font': font, 'effect': effect, 'colors': colors},
 +    });
 +    final title = themeSection ? 'Tema del perfil' : 'Estilo del nombre de visualización';
++    if (!themeSection && !expanded) {
++      return Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          Text(title, style: Theme.of(context).textTheme.titleMedium),
++          const SizedBox(height: 8),
++          OutlinedButton(
++            onPressed: !premium ? null : () async {
++              var draft = appearance;
++              final result = await FluxerBottomSheet.show<Map<String, Object?>>(
++                context,
++                title: title,
++                builder: (sheetContext, _) => StatefulBuilder(
++                  builder: (context, setSheetState) => SingleChildScrollView(
++                    child: Padding(
++                      padding: const EdgeInsets.all(16),
++                      child: Column(
++                        mainAxisSize: MainAxisSize.min,
++                        children: [
++                          ProfileAppearanceEditor(
++                            appearance: draft,
++                            displayName: displayName,
++                            premium: true,
++                            themeSection: false,
++                            expanded: true,
++                            onChanged: (value) => setSheetState(() => draft = value),
++                          ),
++                          FilledButton(
++                            onPressed: draft == null
++                                ? null : () => Navigator.of(sheetContext).pop(draft),
++                            child: const Text('Seleccionar'),
++                          ),
++                        ],
++                      ),
++                    ),
++                  ),
++                ),
++              );
++              if (context.mounted && result != null) onChanged(result);
++            },
++            child: Row(
++              children: [
++                Expanded(child: Text(
++                  !premium ? 'Premium' : style == null ? 'Personalizar' :
++                    '${fonts[font] ?? font} + ${effects[effect] ?? effect}',
++                )),
++                const PhosphorIcon(PhosphorIconsBold.caretRight, size: 18),
++              ],
++            ),
++          ),
++        ],
++      );
++    }
++
 +    return Column(
 +      crossAxisAlignment: CrossAxisAlignment.start,
 +      children: [
-+        Text(title, style: Theme.of(context).textTheme.titleMedium),
++        if (!expanded) Text(title, style: Theme.of(context).textTheme.titleMedium),
 +        if (!premium) const Text('Premium') else ...[
 +          const SizedBox(height: 8),
 +          Container(
@@ -432,9 +835,9 @@ index 0000000..ed8ad24
 +          const SizedBox(height: 8),
 +          if (themeSection) ...[
 +            Row(children: [
-+              Expanded(child: FluxerColorPickerField(label: 'Primario', value: primary, onChanged: (color) => updateTheme(color, accent))),
++              Expanded(child: _ProfileColorSwatch(label: 'Primario', value: primary, onChanged: (color) => updateTheme(color, accent))),
 +              const SizedBox(width: 12),
-+              Expanded(child: FluxerColorPickerField(label: 'Realce', value: accent, onChanged: (color) => updateTheme(primary, color))),
++              Expanded(child: _ProfileColorSwatch(label: 'Realce', value: accent, onChanged: (color) => updateTheme(primary, color))),
 +            ]),
 +            if (theme != null)
 +              TextButton(onPressed: () => onChanged({'theme': null, 'name_style': style}), child: const Text('Restablecer tema')),
@@ -445,7 +848,7 @@ index 0000000..ed8ad24
 +              updateName(font, value, List.generate(count, (i) => i < colors.length ? colors[i] : palette[i]));
 +            }),
 +            for (var i = 0; i < colorCount; i++)
-+              FluxerColorPickerField(label: 'Color ${i + 1}', value: colors[i], onChanged: (value) {
++              _ProfileColorSwatch(label: 'Color ${i + 1}', value: colors[i], onChanged: (value) {
 +                final next = [...colors]..[i] = value;
 +                updateName(font, effect, next);
 +              }),
@@ -475,3 +878,37 @@ index 0000000..ed8ad24
 +    );
 +  }
 +}
++
++
++class _ProfileColorSwatch extends StatelessWidget {
++  const _ProfileColorSwatch({required this.label, required this.value, required this.onChanged});
++
++  final String label;
++  final int value;
++  final ValueChanged<int> onChanged;
++
++  @override
++  Widget build(BuildContext context) {
++    final color = _color(value);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        FilledButton(
++          style: FilledButton.styleFrom(
++            backgroundColor: color,
++            foregroundColor: color.computeLuminance() > .45 ? Colors.black : Colors.white,
++            minimumSize: const Size(0, 54),
++          ),
++          onPressed: () async {
++            final selected = await showProfileColorPicker(context, value);
++            if (context.mounted && selected != null) onChanged(selected);
++          },
++          child: const PhosphorIcon(PhosphorIconsBold.pencilSimple, size: 20),
++        ),
++        const SizedBox(height: 6),
++        Text(label, textAlign: TextAlign.center),
++      ],
++    );
++  }
++}
++
