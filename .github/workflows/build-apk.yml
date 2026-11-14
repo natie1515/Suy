@@ -28,6 +28,10 @@ on:
         description: URL HTTPS de Privacidad
         required: false
         type: string
+      feedback_url:
+        description: URL HTTPS para Enviar comentarios
+        required: true
+        type: string
       desktop_url:
         description: URL HTTPS de descarga de escritorio
         required: false
@@ -57,6 +61,11 @@ jobs:
           git -C dart_sdk apply --check ../patches/veylo-perfil-dart-sdk.patch
           git apply patches/veylo-perfil-android.patch
           git -C dart_sdk apply ../patches/veylo-perfil-dart-sdk.patch
+
+      - name: Aplicar barra de perfil de Veylo
+        run: |
+          git apply --check patches/veylo-barra-android.patch
+          git apply patches/veylo-barra-android.patch
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -94,6 +103,7 @@ jobs:
           WHATS_NEW_URL: ${{ inputs.whats_new_url }}
           TERMS_URL: ${{ inputs.terms_url }}
           PRIVACY_URL: ${{ inputs.privacy_url }}
+          FEEDBACK_URL: ${{ inputs.feedback_url }}
           DESKTOP_URL: ${{ inputs.desktop_url }}
           IOS_URL: ${{ inputs.ios_url }}
         run: |
@@ -126,6 +136,7 @@ jobs:
           news = url("WHATS_NEW_URL", releases)
           terms = url("TERMS_URL", f"{home}/terms")
           privacy = url("PRIVACY_URL", f"{home}/privacy")
+          feedback = url("FEEDBACK_URL", "")
           desktop = url("DESKTOP_URL", f"{home}/")
           apk = url("APK_URL", f"{releases}/latest")
           ios = url("IOS_URL", f"{home}/")
@@ -186,6 +197,12 @@ jobs:
           set_dart_constant(oauth, "kApplicationDocsDomain", urlsplit(docs).hostname)
           set_dart_constant(
               "lib/core/constants/external_urls.dart", "fluxerPatchNotes", news
+          )
+
+          set_dart_constant(
+              "lib/features/settings/presentation/user_settings_nav.dart",
+              "kFluxerFeedbackUrl",
+              feedback,
           )
 
           gradle = Path("android/app/build.gradle.kts")
