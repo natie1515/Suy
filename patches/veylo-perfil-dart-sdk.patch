@@ -1,0 +1,132 @@
+diff --git a/lib/models/user_private_response.dart b/lib/models/user_private_response.dart
+index dc29a80..e1dabf4 100644
+--- a/lib/models/user_private_response.dart
++++ b/lib/models/user_private_response.dart
+@@ -39,6 +39,7 @@ class UserPrivateResponse {
+     required this.bio,
+     required this.pronouns,
+     required this.accentColor,
++    this.profileAppearance,
+     required this.hasEverPurchased,
+     required this.hasDismissedPremiumOnboarding,
+     required this.id,
+@@ -165,6 +166,9 @@ class UserPrivateResponse {
+   @JsonKey(includeIfNull: true, name: 'accent_color')
+   final Int32Type? accentColor;
+ 
++  @JsonKey(name: 'profile_appearance', includeIfNull: false)
++  final Map<String, Object?>? profileAppearance;
++
+   /// The IANA timezone identifier saved by the user
+   @JsonKey(includeIfNull: false)
+   final String? timezone;
+diff --git a/lib/models/user_private_response.g.dart b/lib/models/user_private_response.g.dart
+index 03d0e05..df246fc 100644
+--- a/lib/models/user_private_response.g.dart
++++ b/lib/models/user_private_response.g.dart
+@@ -56,6 +56,7 @@ UserPrivateResponse _$UserPrivateResponseFromJson(
+       ),
+       bio: $checkedConvert('bio', (v) => v as String?),
+       pronouns: $checkedConvert('pronouns', (v) => v as String?),
++      profileAppearance: $checkedConvert('profile_appearance', (v) => (v as Map?)?.cast<String, Object?>()),
+       accentColor: $checkedConvert('accent_color', (v) => (v as num?)?.toInt()),
+       hasEverPurchased: $checkedConvert(
+         'has_ever_purchased',
+@@ -285,6 +286,7 @@ Map<String, dynamic> _$UserPrivateResponseToJson(
+   'bio': instance.bio,
+   'pronouns': instance.pronouns,
+   'accent_color': instance.accentColor,
++  'profile_appearance': ?instance.profileAppearance,
+   'timezone': ?instance.timezone,
+   'timezone_privacy_flags': ?instance.timezonePrivacyFlags,
+   'banner': instance.banner,
+diff --git a/lib/models/user_profile_full_response_user_profile.dart b/lib/models/user_profile_full_response_user_profile.dart
+index c009a69..a8968a8 100644
+--- a/lib/models/user_profile_full_response_user_profile.dart
++++ b/lib/models/user_profile_full_response_user_profile.dart
+@@ -15,6 +15,7 @@ class UserProfileFullResponseUserProfile {
+     required this.pronouns,
+     required this.banner,
+     required this.accentColor,
++    this.profileAppearance,
+     this.bannerColor,
+   });
+ 
+@@ -42,6 +43,9 @@ class UserProfileFullResponseUserProfile {
+   @JsonKey(includeIfNull: true, name: 'accent_color')
+   final Int32Type? accentColor;
+ 
++  @JsonKey(name: 'profile_appearance', includeIfNull: false)
++  final Map<String, Object?>? profileAppearance;
++
+   Map<String, Object?> toJson() =>
+       _$UserProfileFullResponseUserProfileToJson(this);
+ }
+diff --git a/lib/models/user_profile_full_response_user_profile.g.dart b/lib/models/user_profile_full_response_user_profile.g.dart
+index f74ff52..41ce3dd 100644
+--- a/lib/models/user_profile_full_response_user_profile.g.dart
++++ b/lib/models/user_profile_full_response_user_profile.g.dart
+@@ -16,6 +16,7 @@ UserProfileFullResponseUserProfile _$UserProfileFullResponseUserProfileFromJson(
+       bio: $checkedConvert('bio', (v) => v as String?),
+       pronouns: $checkedConvert('pronouns', (v) => v as String?),
+       banner: $checkedConvert('banner', (v) => v as String?),
++      profileAppearance: $checkedConvert('profile_appearance', (v) => (v as Map?)?.cast<String, Object?>()),
+       accentColor: $checkedConvert('accent_color', (v) => (v as num?)?.toInt()),
+       bannerColor: $checkedConvert('banner_color', (v) => (v as num?)?.toInt()),
+     );
+@@ -35,4 +36,5 @@ Map<String, dynamic> _$UserProfileFullResponseUserProfileToJson(
+   'banner': instance.banner,
+   'banner_color': ?instance.bannerColor,
+   'accent_color': instance.accentColor,
++  'profile_appearance': ?instance.profileAppearance,
+ };
+diff --git a/lib/models/user_update_with_verification_request.dart b/lib/models/user_update_with_verification_request.dart
+index c722707..24389bf 100644
+--- a/lib/models/user_update_with_verification_request.dart
++++ b/lib/models/user_update_with_verification_request.dart
+@@ -55,6 +55,7 @@ class UserUpdateWithVerificationRequest {
+         const JsonNullable<Base64ImageType>.undefined(),
+     JsonNullable<String> bio = const JsonNullable<String>.undefined(),
+     JsonNullable<String> pronouns = const JsonNullable<String>.undefined(),
++    this.profileAppearance = const JsonNullable<Map<String, Object?>>.undefined(),
+     JsonNullable<ColorType> accentColor =
+         const JsonNullable<ColorType>.undefined(),
+     JsonNullable<String> timezone = const JsonNullable<String>.undefined(),
+@@ -125,6 +126,7 @@ class UserUpdateWithVerificationRequest {
+        _pronounsPresent = false,
+        accentColor = const JsonNullable<ColorType>.undefined(),
+        _accentColorPresent = false,
++       profileAppearance = const JsonNullable<Map<String, Object?>>.undefined(),
+        timezone = const JsonNullable<String>.undefined(),
+        _timezonePresent = false;
+   factory UserUpdateWithVerificationRequest.patch(Map<String, Object?> json) =>
+@@ -155,6 +157,9 @@ class UserUpdateWithVerificationRequest {
+       pronouns: json.containsKey('pronouns')
+           ? JsonNullable<String>.of(value.pronounsValue)
+           : const JsonNullable<String>.undefined(),
++      profileAppearance: json.containsKey('profile_appearance')
++          ? JsonNullable<Map<String, Object?>>.of((json['profile_appearance'] as Map?)?.cast<String, Object?>())
++          : const JsonNullable<Map<String, Object?>>.undefined(),
+       accentColor: json.containsKey('accent_color')
+           ? JsonNullable<ColorType>.of(value.accentColorValue)
+           : const JsonNullable<ColorType>.undefined(),
+@@ -304,6 +309,9 @@ class UserUpdateWithVerificationRequest {
+   @JsonKey(includeIfNull: false, name: 'pronouns')
+   final String? pronounsValue;
+   final bool _pronounsPresent;
++  @JsonKey(includeFromJson: false, includeToJson: false)
++  final JsonNullable<Map<String, Object?>> profileAppearance;
++
+   @JsonKey(includeFromJson: false, includeToJson: false)
+   final JsonNullable<ColorType> accentColor;
+   @JsonKey(includeIfNull: false, name: 'accent_color')
+@@ -332,6 +340,9 @@ class UserUpdateWithVerificationRequest {
+     if (_pronounsPresent) {
+       json.putIfAbsent('pronouns', () => pronounsValue);
+     }
++    if (profileAppearance.isPresent) {
++      json['profile_appearance'] = profileAppearance.value;
++    }
+     if (_accentColorPresent) {
+       json.putIfAbsent('accent_color', () => accentColorValue);
+     }
