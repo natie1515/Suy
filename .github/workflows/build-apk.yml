@@ -130,12 +130,17 @@ jobs:
           apk = url("APK_URL", f"{releases}/latest")
           ios = url("IOS_URL", f"{home}/")
 
-          def replace_literal(path, old, new):
+          def set_dart_constant(path, key, value):
               file = Path(path)
               source = file.read_text(encoding="utf-8")
-              if source.count(old) != 1:
-                  raise SystemExit(f"No se encontró el ajuste esperado en {path}: {old}")
-              file.write_text(source.replace(old, new, 1), encoding="utf-8")
+              updated, count = re.subn(
+                  rf"(\b{key}\s*=\s*)['\"][^'\"]*['\"]",
+                  lambda match: f"{match[1]}'{value}'",
+                  source,
+              )
+              if count != 1:
+                  raise SystemExit(f"No se encontró una constante única {key} en {path}")
+              file.write_text(updated, encoding="utf-8")
 
           rules = [
               (r"https://play\.google\.com/store/apps/details\?id=com\.fluxer\b[^\s'\"<>)\\]*", apk),
@@ -177,18 +182,16 @@ jobs:
           constants.write_text(source, encoding="utf-8")
 
           oauth = "lib/features/settings/utils/oauth_authorize_url.dart"
-          replace_literal(oauth, "'https://fluxer.dev'", f"'{docs}'")
-          replace_literal(oauth, "'fluxer.dev'", f"'{urlsplit(docs).hostname}'")
-          replace_literal(
-              "lib/core/constants/external_urls.dart",
-              "'$fluxerMarketing/patch-notes'",
-              f"'{news}'",
+          set_dart_constant(oauth, "kApplicationDocsUrl", docs)
+          set_dart_constant(oauth, "kApplicationDocsDomain", urlsplit(docs).hostname)
+          set_dart_constant(
+              "lib/core/constants/external_urls.dart", "fluxerPatchNotes", news
           )
 
           gradle = Path("android/app/build.gradle.kts")
           source = gradle.read_text(encoding="utf-8")
           source, count = re.subn(
-              r'(manifestPlaceholders\["appLabel"\]\s*=\s*)"Fluxer"',
+              r'(manifestPlaceholders\["appLabel"\]\s*=\s*)"(?:Fluxer|Veylo)"',
               r'\1"Veylo"',
               source,
           )
